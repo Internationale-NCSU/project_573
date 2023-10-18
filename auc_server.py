@@ -1,3 +1,5 @@
+# Pinxiang Wang 2023/10/18
+
 import select
 import sys
 import threading
@@ -34,17 +36,6 @@ seller_thread = None
 bidding_end = False
 
 
-def reject_new_connection(incoming_socket):
-    global seller_client
-    while seller_client is not None and bidding_start is False:
-        try:
-            incoming_socket, addr = incoming_socket.accept()
-            if incoming_socket is not None:
-                incoming_socket.send(b'Connection rejected!')
-        except Exception as e:
-            print('Error:', e)
-
-
 def server(address, port):
     global seller_client, seller_addr, client_connections, bidding_start, seller_thread
 
@@ -53,22 +44,34 @@ def server(address, port):
     welcome_socket.listen(5)
 
     while True:
-        if status == 0 and seller_thread is None:
+        client, addr = welcome_socket.accept()
+
+        if status == 0:
             print("Auctioneer is ready for hosting auctions!")
-            seller_thread = threading.Thread(target=seller_handler, args=(welcome_socket,))
-            seller_thread.start()
+
+            if seller_client is None:
+                seller_client = client
+                seller_addr = addr
+                seller_thread = threading.Thread(
+                    target=seller_handler, args=())
+                seller_thread.start()
+            else:
+                client.send(b'Connection rejected!')
+                client.close()
+
         elif status == 1:
-            buyer_client, buyer_addr = welcome_socket.accept()
-            print('buyer address ', buyer_client.getpeername())
-            client_connections.append(buyer_client)
+            # Reject new connection if the number of buyers is reached
+            if len(client_connections) >= num_of_buyers:
+                client.send(b'Connection rejected!')
+                client.close()
+                continue
 
-            reject_thread = threading.Thread(target=reject_new_buyer_connection, args=(welcome_socket,))
-            reject_thread.start()
-
+            print('buyer address ', client.getpeername())
+            client_connections.append(client)
             # response_msg = ('New incoming buyer!' + ' current connections:' + str(len(client_connections))).encode()
             # seller_client.send(response_msg)
 
-            buyer_handler(buyer_client, len(client_connections))
+            buyer_handler(client, len(client_connections))
 
             connections_count = len(client_connections)
             if connections_count == num_of_buyers:
@@ -78,31 +81,17 @@ def server(address, port):
                 print('status', status)
 
 
-def reject_new_buyer_connection(welcome_socket):
-    while len(client_connections) >= num_of_buyers and not bidding_end:
-        try:
-            incoming_socket, addr = welcome_socket.accept()
-            if incoming_socket is not None:
-                incoming_socket.send(b'Connection rejected!')
-        except Exception as e:
-            print('Error:', e)
-
-
-
-def seller_handler(welcome_socket):
+def seller_handler():
     global type_of_the_auction, lowest_price, num_of_buyers, \
-        item_name, status, seller_client, seller_addr, bidding_start  # Declare as global
+        item_name, status, seller_client, seller_addr, bidding_start, bidding_end  # Declare as global
 
-    seller_client, seller_addr = welcome_socket.accept()
     seller_client.send(b'Your role is [Seller]!')
     #  block all the  incoming connections
-    rejection_thread = threading.Thread(target=reject_new_connection, args=(welcome_socket,))
-    rejection_thread.start()
-
-
+    # rejection_thread = threading.Thread(target=reject_new_connection, args=(welcome_socket,))
+    # rejection_thread.start()
 
     print('Seller is connected from: ', seller_client.getpeername())
-    while seller_client is not None and bidding_end is False:
+    while True:
         try:
             msg = seller_client.recv(1024)
             msg = msg.decode()
@@ -121,14 +110,13 @@ def seller_handler(welcome_socket):
 
                 bidding_start = True
                 status = 1
+                return
             except Exception as e:
                 seller_client.send(b'Invalid Auction Request!')
                 print('Invalid Auction Request!')
 
         except Exception as e:
             print('Error:', e)
-           #  seller_client.close()
-
 
 
 def buyer_handler(client, connections_count):
@@ -164,14 +152,16 @@ def bidding_handler():
         biding_info = {}
         while True:
             if len(biding_info) < num_of_buyers:
-                readable, writable, exceptional = select.select(client_connections, [], [])
+                readable, writable, exceptional = select.select(
+                    client_connections, [], [])
                 for sock in readable:
                     data = sock.recv(1024).decode()
                     # print('data from buyer: ', data)
                     biding_info[sock] = int(data)
                     try:
                         data = int(data)
-                        print('Buyer ', client_id_mapping[sock], ' bid $', data)
+                        print(
+                            'Buyer ', client_id_mapping[sock], ' bid $', data)
                         sock.send(b'Bid received!')
                     except Exception as e:
                         print('Error:', e)
@@ -194,7 +184,8 @@ def bidding_handler():
         if highest_bid >= lowest_price:
 
             if type_of_the_auction == 1:
-                print('The winner is ', winner_client.getpeername(), ' with bid ', highest_bid)
+                print('The winner is ', winner_client.getpeername(),
+                      ' with bid ', highest_bid)
                 winner_client.send(
                     b'Auction finished!\nYou won this item' + item_name.encode() + b'! Your payment due is' +
                     str(highest_bid).encode() + b'!')
@@ -203,7 +194,8 @@ def bidding_handler():
                     str(highest_bid).encode() + b'!')
 
             elif type_of_the_auction == 2:
-                print('The winner is ', winner_client.getpeername(), ' with bid ', second_highest_bid)
+                print('The winner is ', winner_client.getpeername(),
+                      ' with bid ', second_highest_bid)
                 winner_client.send(
                     b'Auction finished!\nYou won this item' + item_name.encode() + b'! Your payment due is' +
                     str(second_highest_bid).encode() + b'!')
@@ -213,9 +205,8 @@ def bidding_handler():
 
             for client in client_connections:
                 if client != winner_client:
-                    client.send(b'Auction finished!\nUnfortunately you did not win in the last round.')
-
-
+                    client.send(
+                        b'Auction finished!\nUnfortunately you did not win in the last round.')
 
             # end this round of bidding
             broadcast(b'Bid round ends!')
@@ -230,16 +221,19 @@ def bidding_handler():
             # end this round of bidding
             seller_client.send(b'Sorry, this item is not sold!')
             for client in client_connections:
-                client.send(b'Auction finished!\nUnfortunately you did not win in the last round.')
+                client.send(
+                    b'Auction finished!\nUnfortunately you did not win in the last round.')
             broadcast(b'Bid round ends!')
 
             for client in client_connections:
                 client.close()
             seller_client.close()
 
+        client_connections = []
         bidding_start = False
         bidding_end = True
         seller_thread = None
+        seller_client = None
         status = 0
         print('bidding thread end!')
     except Exception as e:
