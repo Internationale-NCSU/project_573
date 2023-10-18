@@ -1,86 +1,91 @@
+import sys
 from socket import socket, AF_INET, SOCK_STREAM
+
 HOST = '127.0.0.1'
 PORT = 5001
 
+
 # Test Seller Msg:
 # 1 100 10 apple
+bid_received = False
+bid_end = False
 
 
 def client(address, port):
     try:
         sock = socket(AF_INET, SOCK_STREAM)
         sock.connect((address, port))
-        content = sock.recv(16)
+        content = sock.recv(1024)
 
-        if content == b'you are a seller':
+        if content == b'Your role is [Seller]!':
+            print(content.decode())
             seller_handler(sock)
-        elif content == b'you are a buyer':
+        elif content == b'Your role is [Buyer]!':
+            print(content.decode())
             buyer_handler(sock)
         elif content == b'Connection rejected!':
-            print('Connection rejected!')
-
-                # while response_msg == 'Invalid Auction Request!':
-                # client_msg = input("input the message to server:")
-                # client_msg = '1 100 10 apple'
-
+            print('Server is busy, please try again later.')
+            sock.close()
     except Exception as e:
-        print('client:', e)
+        print('Errors happened on client side:', e)
+        sock.close()
 
 
 def seller_handler(sock):
-    # client_msg = input("  input the message to server:")
-    client_msg = '2 100 3 apple'
-    # client_msg = 'asdf;askdjfalskdfja;slkdgj24eitqj;wrekgnfwa;lsdkfj'
+    global bid_end
+    while not bid_end:
+        client_msg = input("Please submit auction request:")
+        sock.send(client_msg.encode())
+        response_msg = sock.recv(1024)
 
-    sock.send(client_msg.encode())
+        if response_msg == b'Invalid Auction Request!':
+            print(response_msg.decode())
+            continue
+        elif response_msg == b'Auction start':
+            print(response_msg.decode())
+            while True:
+                response_msg = sock.recv(1024)
+                # print(response_msg)
+                if response_msg == b'Bid round ends!':
+                    print('seller socket closed!')
+                    bid_end = True
+                    sock.close()
+                    break
+                else:
+                    print(response_msg.decode())
+                # if response_msg == 'All buyers connected!':
+                #     break
 
+
+def buyer_handler(sock):
+    global bid_received
+    # client_msg = 'buyer is online'
     response_msg = sock.recv(1024)
-
-    if response_msg == b'Invalid Auction Request!':
-        print(response_msg.decode())
-    elif response_msg == b'seller connection established, waiting for incoming buyers':
-        print(response_msg.decode())
+    if response_msg == b'Bidding starts!':
         while True:
-            response_msg = sock.recv(1024)
-            # print(response_msg)
-            if response_msg == b'bid round ends!':
-                print('seller socket closed!')
+            if not bid_received:
+                keyboard_input = input('Please submit your bid:')
+                sock.send(keyboard_input.encode())
+            response_msg = sock.recv(1024)  # receive the bid result
+            if response_msg == b'Bid received!':
+                bid_received = True
+                print('Bid received. Please wait...')
+                # sock.recv(1024)
+            elif response_msg == b'Invalid auction request!':
+                print('Invalid bid, please submit a positive integer!')
+                continue
+            elif response_msg == b'Bid round ends!':
+                print('Disconnecting from the Auctioneer server. Auction is over!')
                 sock.close()
                 break
             else:
                 print(response_msg.decode())
-            # if response_msg == 'All buyers connected!':
-            #     break
 
 
-def buyer_handler(sock):
+# client(HOST, PORT)
 
-    client_msg = 'buyer is online'
-    sock.send(client_msg.encode())
-
-    while True:
-        response_msg = sock.recv(1024)
-        # print(response_msg.decode())
-
-        if response_msg == b'Bidding starts!':
-            keyboard_input = input('input your bid:')
-            sock.send(keyboard_input.encode())
-            # print('keyboard input:', keyboard_input)
-            # send bid to server
-            # response_msg = sock.recv(1024)
-            # print(response_msg)
-        elif response_msg == b'Bid received!':
-            print('Your bid is received!')
-            # sock.recv(1024)
-        elif response_msg == b'Invalid bid!':
-            keyboard_input = input('Invalid bid, please try again:')
-            sock.send(keyboard_input.encode())
-        elif response_msg == b'bid round ends!':
-            print('bid round end!')
-            sock.close()
-            break
-        else:
-            print(response_msg.decode())
-
-
-client(HOST, PORT)
+if __name__ == "__main__":
+    args = sys.argv
+    HOST = args[1]
+    PORT = int(args[2])
+    client(HOST, PORT)
