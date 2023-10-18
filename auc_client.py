@@ -53,6 +53,8 @@ def seller_handler(sock):
                     bid_end = True
                     sock.close()
                     break
+                elif response_msg == b'':
+                    return
                 else:
                     print(response_msg.decode())
                 # if response_msg == 'All buyers connected!':
@@ -80,6 +82,8 @@ def buyer_handler(sock):
                 print('Disconnecting from the Auctioneer server. Auction is over!')
                 sock.close()
                 break
+            elif response_msg == b'':
+                return
             else:
                 print(response_msg.decode())
 

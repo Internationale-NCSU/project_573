@@ -44,10 +44,9 @@ def server(address, port):
     welcome_socket.listen(5)
 
     while True:
+        print("Auctioneer is ready for hosting auctions!")
         client, addr = welcome_socket.accept()
-
         if status == 0:
-            print("Auctioneer is ready for hosting auctions!")
 
             if seller_client is None:
                 seller_client = client
