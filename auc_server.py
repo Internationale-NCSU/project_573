@@ -118,7 +118,6 @@ def seller_handler():
         except Exception as e:
             print('Error:', e)
 
-
 def buyer_handler(client, connections_count):
     global client_connections, client_id_mapping
     client.send(b'Your role is [Buyer]!')
